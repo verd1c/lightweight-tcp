@@ -24,14 +24,37 @@
 microtcp_sock_t
 microtcp_socket (int domain, int type, int protocol)
 {
-  /* Your code here */
+  microtcp_sock_t sock;
+  int sock_desc;
+  
+  // Create socket
+  if((sock_desc = socket(domain, SOCK_DGRAM, protocol)) == -1){ // Might be scuffed
+    perror("opening UDP socket");
+    printf("socket error");
+    exit(EXIT_FAILURE);
+  }
+  sock.sd = sock_desc; // Set socket
+  
+  // Set state
+  sock.state = INVALID;
+
+  return sock;
+
 }
 
 int
 microtcp_bind (microtcp_sock_t *socket, const struct sockaddr *address,
                socklen_t address_len)
 {
-  /* Your code here */
+  // Bind
+  if(bind(socket->sd, address, address_len) == -1){
+    perror("TCP bind");
+    printf("TCP bind error");
+    exit(EXIT_FAILURE);
+  }
+  printf("Succeeded\n");
+
+  return 0;
 }
 
 int
@@ -66,3 +89,9 @@ microtcp_recv (microtcp_sock_t *socket, void *buffer, size_t length, int flags)
 {
   /* Your code here */
 }
+
+// int main(){
+//   //(sock_desc = socket(AF_INET, SOCK_DGRAM, 0)
+//   microtcp_socket(0,0,0);
+//   return 0;
+// }

@@ -25,6 +25,10 @@
 #include <sys/socket.h>
 #include <stdint.h>
 
+//Myheadersrshsa
+#include <stdlib.h>
+#include <stdio.h>
+
 /*
  * Several useful constants
  */
