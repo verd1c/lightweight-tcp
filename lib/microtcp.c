@@ -163,14 +163,6 @@ microtcp_accept (microtcp_sock_t *socket, struct sockaddr *address,
     received = recvfrom(socket->sd, (void *)&client, sizeof(microtcp_header_t),  
                 0, address, 
                 &address_len);
-
-    // 100 ->  100 << 1 -> 1000 ACK. 1000 >> 1 = 100 = 4
-    // if(ntohs(client.control) >> 1 == 4){
-    //   printf("Packet was ACK\n");
-    //   receivedACK = 1;
-    // }
-    // if(ntohs(client.control) >> 1 == 1) printf("Packet was SYN");
-    // if(ntohs(client.control) >> 1 == 5) printf("Packet was SYNACK");
   }
 
   if(ntohl(client.ack_number) == ntohl(server.seq_number) + 1){
@@ -181,14 +173,75 @@ microtcp_accept (microtcp_sock_t *socket, struct sockaddr *address,
 
     printf("%d %d\n", ntohl(client.ack_number), ntohl(server.seq_number) + 1);
   }
-
-  //if(receivedSYN == 1 && receivedACK == 1) printf("3 way handshake done.\n");
 }
 
 int
 microtcp_shutdown (microtcp_sock_t *socket, int how)
 {
   /* Your code here */
+  microtcp_header_t client, server;
+  client.window = htons(MICROTCP_WIN_SIZE);
+  client.data_len = htonl(32);
+  struct sockaddr_in address = socket->address;
+  socklen_t address_len = socket->address_len;
+  int received = -1;
+
+  // Client FIN, ACK
+  client.seq_number = htonl(500); // Should be rand
+  client.ack_number = htonl(0);
+  client.control = htons((4 << 1) | 1);
+  sendto(socket->sd,
+        (const void *)&client,
+        sizeof(microtcp_header_t),
+        0,
+        (struct sockaddr *)&address,
+        address_len
+  );
+
+  // Wait for server's ACK
+  while(received < 0){
+    received = recvfrom(socket->sd, (void *)&server, sizeof(microtcp_header_t),  
+                0, (struct sockaddr *)&address, 
+                &address_len);
+  }
+  received = -1;
+
+  if(ntohs(server.control) == 4 << 1 && ntohl(server.ack_number) == ntohl(client.seq_number) + 1){
+    printf("ACK Went fine\n");
+    socket->state = CLOSING_BY_HOST;
+  }else{
+    printf("Something went wrong\n");
+    return 1;
+  }
+
+  // Wait for server's FIN ACK
+  while(received < 0){
+    received = recvfrom(socket->sd, (void *)&server, sizeof(microtcp_header_t),  
+                0, (struct sockaddr *)&address, 
+                &address_len);
+  }
+
+  if(ntohs(server.control) == (4 << 1) || 1){
+    printf("FINACK Went fine\n");
+  }else{
+    printf("Something went wrong\n");
+    return 1;
+  }
+
+  // Client FIN, ACK
+  client.seq_number = server.ack_number; // Should be rand
+  client.ack_number = htonl(ntohl(server.seq_number) + 1);
+  client.control = htons(4 << 1);
+  sendto(socket->sd,
+        (const void *)&client,
+        sizeof(microtcp_header_t),
+        0,
+        (struct sockaddr *)&address,
+        address_len
+  );
+
+  printf("I sent my stuff\n");
+  socket->state = CLOSED;
 }
 
 ssize_t
@@ -202,4 +255,61 @@ ssize_t
 microtcp_recv (microtcp_sock_t *socket, void *buffer, size_t length, int flags)
 {
   /* Your code here */
+  microtcp_header_t client, server;
+  client.window = htons(MICROTCP_WIN_SIZE);
+  client.data_len = htonl(32);
+  struct sockaddr_in address = socket->address;
+  socklen_t address_len = socket->address_len;
+  int received = -1;
+
+  // Receive a packet
+  while(received < 0){
+    received = recvfrom(socket->sd, (void *)&client, sizeof(microtcp_header_t),  
+                0, (struct sockaddr *)&address, 
+                &address_len);
+  }
+
+  if(ntohs(client.control) == (4 << 1) | 1){
+    // Acknowledge the FIN with an ACk
+    server.ack_number = htonl(ntohl(client.seq_number) + 1);
+    server.control = htons(4 << 1);
+    sendto(socket->sd,
+          (const void *)&server,
+          sizeof(microtcp_header_t),
+          0,
+          (struct sockaddr *)&address,
+          address_len
+    );
+    socket->state = CLOSING_BY_PEER;
+
+    // Finished undone work, shutdown from host, send FIN ACK
+    server.seq_number = htonl(1000);
+    server.control = htons((4 << 1) | 1);
+    sendto(socket->sd,
+          (const void *)&server,
+          sizeof(microtcp_header_t),
+          0,
+          (struct sockaddr *)&address,
+          address_len
+    );
+
+    // Wait for ACK
+    received = -1;
+    while(received < 0){
+      received = recvfrom(socket->sd, (void *)&client, sizeof(microtcp_header_t),  
+                  0, (struct sockaddr *)&address, 
+                  &address_len);
+    }
+
+    if(ntohs(client.control) == 4 << 1 && ntohl(client.ack_number) == ntohl(server.seq_number) + 1){
+      socket->state = CLOSED;
+      printf("Server closed connection\n");
+
+      return -20;
+    }else{
+      printf("Something went wrong! %d %d %d\n", ntohs(client.control), ntohl(client.ack_number), ntohl(server.seq_number) + 1);
+    }
+  }
+
+  return 1;
 }

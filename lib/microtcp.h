@@ -29,7 +29,20 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
+#include <unistd.h>
 #include <arpa/inet.h>
+
+// Bitwise
+#define ACK 4 << 1
+#define FINACK 4 << 1 | 1
+#define SYN 1 << 1
+#define SYNACK 5 << 1
+
+
+
+#define DEBUG 1
+#define TRUE 1
+#define FALSE 0
 
 /*
  * Several useful constants
@@ -82,6 +95,8 @@ typedef struct
 
   size_t seq_number;            /**< Keep the state of the sequence number */
   size_t ack_number;            /**< Keep the state of the ack number */
+  struct sockaddr_in address;      /**< Socket binded address */
+  socklen_t address_len;        /**< Socket binded address length */
   uint64_t packets_send;
   uint64_t packets_received;
   uint64_t packets_lost;

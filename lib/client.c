@@ -17,11 +17,16 @@ int main(){
     sin.sin_addr.s_addr = INADDR_ANY;
     //sin.sin_addr.s_addr = htonl(INADDR_ANY);
 
-
+    printf("%d, %d\n", sizeof(struct sockaddr), sizeof(socklen_t));
     //microtcp_bind(&s, (struct sockaddr *)&sin, sizeof(struct sockaddr_in));
+    s.address = sin;
+    s.address_len = sizeof(struct sockaddr_in);
 
     microtcp_connect(&s, (struct sockaddr *)&sin, sizeof(struct sockaddr_in));
 
+    if(DEBUG) sleep(5);
+ 
+    // Shutdown
     microtcp_shutdown(&s, SHUT_RDWR);
 
     return 0;
