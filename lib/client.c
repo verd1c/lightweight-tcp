@@ -8,7 +8,7 @@ int main(){
 
     microtcp_sock_t s = microtcp_socket(AF_INET, SOCK_DGRAM, 0);
 
-    printf("Socket created at: %d\n", s.sd);
+    //printf("Socket created at: %d\n", s.sd);
     char *hello = "Hello from client"; 
     struct sockaddr_in sin;
     memset(&sin, 0, sizeof(struct sockaddr_in));
@@ -22,14 +22,7 @@ int main(){
 
     microtcp_connect(&s, (struct sockaddr *)&sin, sizeof(struct sockaddr_in));
 
-    // sendto(s.sd, (const char *)hello, strlen(hello), 
-    //     MSG_CONFIRM, (const struct sockaddr *) &sin,  
-    //         sizeof(sin)); 
-
-    // while(1){
-
-    // }
-    
+    microtcp_shutdown(&s, SHUT_RDWR);
 
     return 0;
 }

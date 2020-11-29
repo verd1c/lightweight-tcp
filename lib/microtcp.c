@@ -95,7 +95,7 @@ microtcp_connect (microtcp_sock_t *socket, const struct sockaddr *address,
     // If server sent SYN ACK
     if(ntohs(server.control) >> 1 == 5){
 
-      printf("Server received SYN and I received SYNACK\n");
+      //printf("Server received SYN and I received SYNACK\n");
       client.ack_number = htonl(ntohl(server.seq_number) + 1);
       client.seq_number = htonl(ntohl(server.ack_number));
     }else{
@@ -110,12 +110,12 @@ microtcp_connect (microtcp_sock_t *socket, const struct sockaddr *address,
 
   // Client ACK
   client.control = htons(4 << 1);
-  printf("ACK num %d\n", ntohl(client.ack_number));
+  //printf("ACK num %d\n", ntohl(client.ack_number));
   sendto(socket->sd, (const void *)&client, sizeof(microtcp_header_t), 
         0, address,  
             address_len); 
 
-  if(receivedSYNACK == 1) printf("I sent my handshake\n");
+  //if(receivedSYNACK == 1) printf("I sent my handshake\n");
 }
 
 int
@@ -149,7 +149,7 @@ microtcp_accept (microtcp_sock_t *socket, struct sockaddr *address,
 
   // Server SYN ACK
   server.control = htons(5 << 1);
-  printf("%d\n", ntohs(server.control));
+  //printf("%d\n", ntohs(server.control));
   sendto(socket->sd, (const void *)&server, sizeof(microtcp_header_t), 
         MSG_CONFIRM, address,  
             address_len); 
@@ -165,17 +165,17 @@ microtcp_accept (microtcp_sock_t *socket, struct sockaddr *address,
                 &address_len);
 
     // 100 ->  100 << 1 -> 1000 ACK. 1000 >> 1 = 100 = 4
-    if(ntohs(client.control) >> 1 == 4){
-      printf("Packet was ACK\n");
-      receivedACK = 1;
-    }
-    if(ntohs(client.control) >> 1 == 1) printf("Packet was SYN");
-    if(ntohs(client.control) >> 1 == 5) printf("Packet was SYNACK");
+    // if(ntohs(client.control) >> 1 == 4){
+    //   printf("Packet was ACK\n");
+    //   receivedACK = 1;
+    // }
+    // if(ntohs(client.control) >> 1 == 1) printf("Packet was SYN");
+    // if(ntohs(client.control) >> 1 == 5) printf("Packet was SYNACK");
   }
 
   if(ntohl(client.ack_number) == ntohl(server.seq_number) + 1){
     if(ntohs(client.control) >> 1 == 4){
-      printf("Handshake complete.");
+      printf("Handshake complete.\n");
     }
   }else{
 
