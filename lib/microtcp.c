@@ -24,8 +24,9 @@
 microtcp_sock_t
 microtcp_socket (int domain, int type, int protocol)
 {
-  microtcp_sock_t sock;
-  int sock_desc;
+  microtcp_sock_t sock; // Socket
+  int sock_desc; // Socket descriptor
+  srand(time(NULL)); // Give random seed to rand
   
   // Create socket
   if((sock_desc = socket(domain, SOCK_DGRAM, protocol)) == -1){ // Might be scuffed
@@ -58,13 +59,14 @@ int
 microtcp_connect (microtcp_sock_t *socket, const struct sockaddr *address,
                   socklen_t address_len)
 {
-  microtcp_header_t client, server;
+  microtcp_header_t client, server; // Headers
   client.window = htons(MICROTCP_WIN_SIZE);
   client.data_len = htonl(32);
   int received = -1;
 
   // Client SYN
-  client.seq_number = htonl(100); // Should be rand
+  //srand(time(NULL)); // Give random seed to rand
+  client.seq_number = htonl(rand()); // Random sequence number
   client.ack_number = htonl(0);
   client.control = htons(SYN);
   sendto(socket->sd,
@@ -123,10 +125,10 @@ int
 microtcp_accept (microtcp_sock_t *socket, struct sockaddr *address,
                  socklen_t address_len)
 {
-  microtcp_header_t client, server;
+  microtcp_header_t client, server; // Headers
   client.window = htons(MICROTCP_WIN_SIZE);
   client.data_len = htonl(32);
-  int received = -1, receivedSYN = 0, receivedACK = 0;
+  int received = -1;
 
   // Client SYN
   while(received < 0){
@@ -142,7 +144,8 @@ microtcp_accept (microtcp_sock_t *socket, struct sockaddr *address,
   // Check if packet was SYN and acknowledge num
   if(ntohs(client.control) == SYN){
     server.ack_number = htonl(ntohl(client.seq_number) + 1);
-    server.seq_number = htonl(200);
+    //srand(time(NULL)); // Give random seed to rand
+    server.seq_number = htonl(rand());
   }else{
     perror("handshake failed");
     socket->state = INVALID;
@@ -189,16 +192,16 @@ microtcp_accept (microtcp_sock_t *socket, struct sockaddr *address,
 int
 microtcp_shutdown (microtcp_sock_t *socket, int how)
 {
-  /* Your code here */
-  microtcp_header_t client, server;
+  microtcp_header_t client, server; // Headers
   client.window = htons(MICROTCP_WIN_SIZE);
   client.data_len = htonl(32);
-  struct sockaddr_in address = socket->address;
+  struct sockaddr_in address = socket->address; // Get saved addr from socket
   socklen_t address_len = socket->address_len;
   int received = -1;
 
   // Client FIN, ACK
-  client.seq_number = htonl(500); // Should be rand
+  //srand(time(NULL)); // Give random seed to rand
+  client.seq_number = htonl(rand()); // Should be rand
   client.ack_number = htonl(0);
   client.control = htons(FINACK);
   sendto(socket->sd,
@@ -249,7 +252,7 @@ microtcp_shutdown (microtcp_sock_t *socket, int how)
   }
 
   // Client FIN, ACK
-  client.seq_number = server.ack_number; // Should be rand
+  client.seq_number = server.ack_number;
   client.ack_number = htonl(ntohl(server.seq_number) + 1);
   client.control = htons(ACK);
   sendto(socket->sd,
@@ -274,11 +277,10 @@ microtcp_send (microtcp_sock_t *socket, const void *buffer, size_t length,
 ssize_t
 microtcp_recv (microtcp_sock_t *socket, void *buffer, size_t length, int flags)
 {
-  /* Your code here */
-  microtcp_header_t client, server;
+  microtcp_header_t client, server; // Headers
   client.window = htons(MICROTCP_WIN_SIZE);
   client.data_len = htonl(32);
-  struct sockaddr_in address = socket->address;
+  struct sockaddr_in address = socket->address; // Get saved addr from socket
   socklen_t address_len = socket->address_len;
   int received = -1;
 
@@ -307,7 +309,8 @@ microtcp_recv (microtcp_sock_t *socket, void *buffer, size_t length, int flags)
     socket->state = CLOSING_BY_PEER;
 
     // Finished undone work, shutdown from host, send FIN ACK
-    server.seq_number = htonl(1000);
+    //srand(time(NULL)); // Give random seed to rand
+    server.seq_number = htonl(rand());
     server.control = htons(FINACK);
     sendto(socket->sd,
       (const void *)&server,
