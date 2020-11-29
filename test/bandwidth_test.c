@@ -131,7 +131,7 @@ server_tcp (uint16_t listen_port, const char *file)
   while ((received = recv (accepted, buffer, CHUNK_SIZE, 0)) > 0) {
     written = fwrite (buffer, sizeof(uint8_t), received, fp);
     total_bytes += received;
-    if (written * sizeof(uint8_t) != received) {
+    if (written * sizeof(uint8_t) != (long unsigned int)received) {
       printf ("Failed to write to the file the"
               " amount of data received from the network.\n");
       shutdown (accepted, SHUT_RDWR);
@@ -159,7 +159,32 @@ server_tcp (uint16_t listen_port, const char *file)
 int
 server_microtcp (uint16_t listen_port, const char *file)
 {
-  /*TODO: Write your code here */
+  struct sockaddr_in sin; // Adress
+  int received = -1;
+
+  // Create socket
+  microtcp_sock_t s = microtcp_socket(AF_INET, SOCK_DGRAM, 0);
+
+  // Reset buffeer
+  memset(&sin, 0, sizeof(struct sockaddr_in));
+
+  sin.sin_family = AF_INET; // Set family
+  sin.sin_port = htons(8080); // Set port
+  sin.sin_addr.s_addr = INADDR_ANY; // All addresses
+
+  // Socket keep track
+  s.address = sin; // Keep track of address
+  s.address_len = sizeof(struct sockaddr_in); // Keep track of address length
+
+  // Bind to port
+  microtcp_bind(&s, (struct sockaddr *)&sin, sizeof(struct sockaddr_in));
+
+  // Wait for connection
+  microtcp_accept(&s, (struct sockaddr *)&sin, sizeof(struct sockaddr_in));
+
+  // Wait for FIN
+  while((received = microtcp_recv(&s, (void*)NULL, 1, 0)) != -20){}
+
   return 0;
 }
 
@@ -225,7 +250,7 @@ client_tcp (const char *serverip, uint16_t server_port, const char *file)
     }
 
     data_sent = send (sock, buffer, read_items * sizeof(uint8_t), 0);
-    if (data_sent != read_items * sizeof(uint8_t)) {
+    if ((long unsigned int)data_sent != read_items * sizeof(uint8_t)) {
       printf ("Failed to send the"
               " amount of data read from the file.\n");
       shutdown (sock, SHUT_RDWR);
@@ -248,7 +273,28 @@ client_tcp (const char *serverip, uint16_t server_port, const char *file)
 int
 client_microtcp (const char *serverip, uint16_t server_port, const char *file)
 {
-  /*TODO: Write your code here */
+  struct sockaddr_in sin; // Address
+
+  // Create socket
+  microtcp_sock_t s = microtcp_socket(AF_INET, SOCK_DGRAM, 0);
+
+  memset(&sin, 0, sizeof(struct sockaddr_in)); // Reset buffer
+  sin.sin_family = AF_INET; // Set family
+  sin.sin_port = htons(8080); // Set port
+  sin.sin_addr.s_addr = INADDR_ANY; // All addresses
+
+  // Keep track in 
+  s.address = sin; // Keep track of address
+  s.address_len = sizeof(struct sockaddr_in); // Keep track of address length
+
+  // Connect
+  microtcp_connect(&s, (struct sockaddr *)&sin, sizeof(struct sockaddr_in));
+
+  if(DEBUG) sleep(3); // Possibly sleep before shutdown
+ 
+  // Shutdown
+  microtcp_shutdown(&s, SHUT_RDWR);
+
   return 0;
 }
 

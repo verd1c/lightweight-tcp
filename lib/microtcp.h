@@ -24,22 +24,23 @@
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <stdint.h>
-
-//Myheadersrshsa
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
 #include <unistd.h>
 #include <arpa/inet.h>
 
-// Bitwise
+/*
+ * Bitwise
+ */
 #define ACK 4 << 1
 #define FINACK 4 << 1 | 1
 #define SYN 1 << 1
 #define SYNACK 5 << 1
 
-
-
+/*
+ * Boolean
+ */
 #define DEBUG 1
 #define TRUE 1
 #define FALSE 0
