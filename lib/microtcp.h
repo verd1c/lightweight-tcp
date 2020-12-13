@@ -105,6 +105,7 @@ typedef struct
   uint64_t bytes_send;
   uint64_t bytes_received;
   uint64_t bytes_lost;
+  int type;
 } microtcp_sock_t;
 
 

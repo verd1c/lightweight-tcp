@@ -20,6 +20,8 @@
 
 #include "microtcp.h"
 #include "../utils/crc32.h"
+#define CLIENT 0
+#define SERVER 1
 
 microtcp_sock_t
 microtcp_socket (int domain, int type, int protocol)
@@ -59,11 +61,12 @@ int
 microtcp_connect (microtcp_sock_t *socket, const struct sockaddr *address,
                   socklen_t address_len)
 {
+
   microtcp_header_t client, server; // Headers
   client.window = htons(MICROTCP_WIN_SIZE);
   client.data_len = htonl(32);
   int received = -1;
-
+  socket->type=CLIENT;
   // Client SYN
   //srand(time(NULL)); // Give random seed to rand
   client.seq_number = htonl(rand()); // Random sequence number
@@ -129,6 +132,7 @@ microtcp_accept (microtcp_sock_t *socket, struct sockaddr *address,
   client.window = htons(MICROTCP_WIN_SIZE);
   client.data_len = htonl(32);
   int received = -1;
+  socket->type=SERVER;
 
   // Client SYN
   while(received < 0){
@@ -222,6 +226,8 @@ microtcp_shutdown (microtcp_sock_t *socket, int how)
       &address_len
     );
   }
+  
+  
   received = -1; // Reset received
 
   // Cehck if packet is ACK and check acknowledge
@@ -230,6 +236,10 @@ microtcp_shutdown (microtcp_sock_t *socket, int how)
   }else{
     perror("shutdown failed");
     return 1;
+  }
+
+  if(socket->type==SERVER){
+    return 0;
   }
 
   // Wait for server's FIN ACK
@@ -308,38 +318,42 @@ microtcp_recv (microtcp_sock_t *socket, void *buffer, size_t length, int flags)
     );
     socket->state = CLOSING_BY_PEER;
 
-    // Finished undone work, shutdown from host, send FIN ACK
-    //srand(time(NULL)); // Give random seed to rand
-    server.seq_number = htonl(rand());
-    server.control = htons(FINACK);
-    sendto(socket->sd,
-      (const void *)&server,
-      sizeof(microtcp_header_t),
-      0,
-      (struct sockaddr *)&address,
-      address_len
-    );
+    microtcp_shutdown(socket,0);
 
-    // Wait for ACK
-    received = -1;
-    while(received < 0){
-      received = recvfrom(socket->sd,
-        (void *)&client,
-        sizeof(microtcp_header_t),  
-        0,
-        (struct sockaddr *)&address, 
-        &address_len
-      );
-    }
+    // // Finished undone work, shutdown from host, send FIN ACK
+    // //srand(time(NULL)); // Give random seed to rand
+    // server.seq_number = htonl(rand());
+    // server.control = htons(FINACK);
+    // sendto(socket->sd,
+    //   (const void *)&server,
+    //   sizeof(microtcp_header_t),
+    //   0,
+    //   (struct sockaddr *)&address,
+    //   address_len
+    // );
+
+    // // Wait for ACK
+    // received = -1;
+    // while(received < 0){
+    //   received = recvfrom(socket->sd,
+    //     (void *)&client,
+    //     sizeof(microtcp_header_t),  
+    //     0,
+    //     (struct sockaddr *)&address, 
+    //     &address_len
+    //   );
+    // }
+
+
 
     // Check if packet was ACK and acknowledge num
-    if(ntohs(client.control) == ACK && ntohl(client.ack_number) == ntohl(server.seq_number) + 1){
-      socket->state = CLOSED;
-      printf("Server closed connection\n");
-      return -20;
-    }else{
-      perror("shutdown failed");
-    }
+    // if(ntohs(client.control) == ACK && ntohl(client.ack_number) == ntohl(server.seq_number) + 1){
+    //   socket->state = CLOSED;
+    //   printf("Server closed connection\n");
+    //   return -20;
+    // }else{
+    //   perror("shutdown failed");
+    // }
   }
 
   return 1;
