@@ -182,6 +182,10 @@ server_microtcp (uint16_t listen_port, const char *file)
   // Wait for connection
   microtcp_accept(&s, (struct sockaddr *)&sin, sizeof(struct sockaddr_in));
 
+  // Socket keep track
+  s.address = sin; // Keep track of address
+  s.address_len = sizeof(struct sockaddr_in); // Keep track of address length
+
   // Wait for FIN
   while((received = microtcp_recv(&s, (void*)NULL, 1, 0)) != -20){}
 
@@ -290,7 +294,7 @@ client_microtcp (const char *serverip, uint16_t server_port, const char *file)
   // Connect
   microtcp_connect(&s, (struct sockaddr *)&sin, sizeof(struct sockaddr_in));
 
-  if(DEBUG) sleep(3); // Possibly sleep before shutdown
+  if(DEBUG) sleep(2); // Possibly sleep before shutdown
  
   // Shutdown
   microtcp_shutdown(&s, SHUT_RDWR);

@@ -82,6 +82,7 @@ typedef enum
 typedef struct
 {
   int sd;                       /**< The underline UDP socket descriptor */
+  int type;                     /**< Wether the socket is for a client or a server */
   mircotcp_state_t state;       /**< The state of the microTCP socket */
   size_t init_win_size;         /**< The window size negotiated at the 3-way handshake */
   size_t curr_win_size;         /**< The current window size */
@@ -105,7 +106,6 @@ typedef struct
   uint64_t bytes_send;
   uint64_t bytes_received;
   uint64_t bytes_lost;
-  int type;
 } microtcp_sock_t;
 
 
