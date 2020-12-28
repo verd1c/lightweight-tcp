@@ -278,6 +278,26 @@ int
 client_microtcp (const char *serverip, uint16_t server_port, const char *file)
 {
   struct sockaddr_in sin; // Address
+  FILE *fp;
+  uint8_t *buffer;
+  size_t read_items = 0;
+  ssize_t data_sent;
+
+
+  /* Allocate memory for the application receive buffer */
+  buffer = (uint8_t *) malloc (CHUNK_SIZE);
+  if (!buffer) {
+    perror ("Allocate application receive buffer");
+    return -EXIT_FAILURE;
+  }
+
+  fp = fopen (file, "r");
+  if (!fp) {
+    perror ("Open file for reading");
+    free (buffer);
+    return -EXIT_FAILURE;
+  }
+
 
   // Create socket
   microtcp_sock_t s = microtcp_socket(AF_INET, SOCK_DGRAM, 0);
@@ -294,10 +314,36 @@ client_microtcp (const char *serverip, uint16_t server_port, const char *file)
   // Connect
   microtcp_connect(&s, (struct sockaddr *)&sin, sizeof(struct sockaddr_in));
 
+  printf ("Starting sending data...\n");
+  /* Start sending the data */
+  while (!feof (fp)) {
+    read_items = fread (buffer, sizeof(uint8_t), CHUNK_SIZE, fp);
+    if (read_items < 1) {
+      perror ("Failed read from file");
+      // shutdown (sock, SHUT_RDWR);
+      // close (sock);
+      free (buffer);
+      fclose (fp);
+      return -EXIT_FAILURE;
+    }
+
+    data_sent = microtcp_send (&s, buffer, read_items * sizeof(uint8_t), 0);
+    if ((long unsigned int)data_sent != read_items * sizeof(uint8_t)) {
+      printf ("Failed to send the"
+              " amount of data read from the file.\n");
+      // shutdown (sock, SHUT_RDWR);
+      // close (sock);
+      free (buffer);
+      fclose (fp);
+      return -EXIT_FAILURE;
+    }
+
+  }
+
   if(DEBUG) sleep(2); // Possibly sleep before shutdown
  
   // Shutdown
-  microtcp_shutdown(&s, SHUT_RDWR);
+  //microtcp_shutdown(&s, SHUT_RDWR);
 
   return 0;
 }
