@@ -314,6 +314,18 @@ microtcp_shutdown (microtcp_sock_t *socket, int how)
   socket->state = CLOSED;
 }
 
+static inline
+int
+minPacket(int remaining, int cwnd, int win)
+{
+  if(remaining < cwnd && remaining < win)
+    return remaining;
+  else if(cwnd < win)
+    return cwnd;
+  else
+    return win;
+}
+
 ssize_t
 microtcp_send (microtcp_sock_t *socket, const void *buffer, size_t length,
                int flags)
@@ -325,12 +337,17 @@ microtcp_send (microtcp_sock_t *socket, const void *buffer, size_t length,
   socklen_t address_len = socket->address_len;
   microtcp_header_t client, server;
 
+  printf("sent: %d, length: %d\n", data_sent, length);
   memset(&client, 0, sizeof(microtcp_header_t));
   memset(&server, 0, sizeof(microtcp_header_t));
 
   while(data_sent < length){
     // Get chunk
-    to_send = MIN(remaining, MIN(socket->cwnd, socket->curr_win_size));
+    to_send = MIN(remaining, MIN(socket->cwnd, 5555));
+    // to_send = minPacket(remaining, socket->cwnd, 5555555);
+    printf("Remaining: %d\n", remaining);
+
+
     printf("Sending a segment of %d\n", to_send);
 
     chunks = to_send / MICROTCP_MSS;
@@ -350,7 +367,8 @@ microtcp_send (microtcp_sock_t *socket, const void *buffer, size_t length,
       //   ((microtcp_header_t*)buff)->seq_number = htonl(socket->seq_number + i * (sizeof(microtcp_header_t) + MICROTCP_MSS));
       // }
 
-      memcpy(buff + sizeof(microtcp_header_t), buffer + i*MICROTCP_MSS, MICROTCP_MSS);
+      printf("i: %d, buffer = %p\n", i, buffer + i * MICROTCP_MSS);
+      memcpy(buff + sizeof(microtcp_header_t), buffer + data_sent, MICROTCP_MSS);
 
       sendto(socket->sd,
             buff,
@@ -361,17 +379,19 @@ microtcp_send (microtcp_sock_t *socket, const void *buffer, size_t length,
       );
 
       data_sent += MICROTCP_MSS;
+      buff_index += MICROTCP_MSS;
+      remaining = length - data_sent;
+      printf("%d vs %d\n", i * MICROTCP_MSS, data_sent);
     }
 
-    printf("AAaa\n");
     if(to_send % MICROTCP_MSS != 0){
-      printf("Sending remaining %d bytes\n", to_send & MICROTCP_MSS);
+      printf("Sending remaining %d bytes\n", to_send % MICROTCP_MSS);
       chunks++;
 
       memset(buff, 0, sizeof(microtcp_header_t) + MICROTCP_MSS);
 
       //printf("%s\n", buffer + (chunks - 1) * MICROTCP_MSS);
-      ((microtcp_header_t*)buff)->data_len = to_send % MICROTCP_MSS;
+      ((microtcp_header_t*)buff)->data_len = htonl(to_send % MICROTCP_MSS);
       
       ((microtcp_header_t*)buff)->seq_number = htonl(socket->seq_number + i * (sizeof(microtcp_header_t) + MICROTCP_MSS));
       // if(data_sent == 0){
@@ -382,19 +402,23 @@ microtcp_send (microtcp_sock_t *socket, const void *buffer, size_t length,
       //   ((microtcp_header_t*)buff)->seq_number = htonl(socket->seq_number + (chunks - 1) * (sizeof(microtcp_header_t) + MICROTCP_MSS));
       // }
 
-      memcpy(buff + sizeof(microtcp_header_t), buffer + (chunks - 1) * MICROTCP_MSS, MICROTCP_MSS);
+      memcpy(buff + sizeof(microtcp_header_t), buffer + data_sent, MICROTCP_MSS);
+      
 
       //printf("%s\n", buff + sizeof(microtcp_header_t));
       sendto(socket->sd,
             buff,
-            sizeof(microtcp_header_t) + ((microtcp_header_t*)buff)->data_len,
+            sizeof(microtcp_header_t) + ntohl(((microtcp_header_t*)buff)->data_len),
             0,
             (struct sockaddr *)&address,
             address_len
       );
 
       data_sent += to_send % MICROTCP_MSS;
+      buff_index += to_send % MICROTCP_MSS;
     }
+
+    printf("Buff_index: %d", buff_index);
 
     // Get ACKS
     for(int i = 0; i < chunks; i++){
@@ -405,6 +429,9 @@ microtcp_send (microtcp_sock_t *socket, const void *buffer, size_t length,
         // Timeout
         printf("TImeout\n");
       }
+
+      // socket->curr_win_size = ntohs(server.window);
+      // printf("Server's current window: %d\n", socket->curr_win_size);
 
       // Check if ACK
       if(ntohs(server.control) == ACK){
@@ -476,8 +503,16 @@ microtcp_recv (microtcp_sock_t *socket, void *buffer, size_t length, int flags)
     printf("Seq#: %d Ack#: %d\n", ntohl(((microtcp_header_t*)buf)->seq_number), socket->ack_number);
     if(ntohl(((microtcp_header_t*)buf)->seq_number) == socket->ack_number) socket->ack_number = socket->ack_number + received;
 
+    // Decrease win size
+    socket->curr_win_size = socket->curr_win_size - ntohl(((microtcp_header_t*)buf)->data_len);
+    if((int)(socket->curr_win_size) - (int)ntohl(((microtcp_header_t*)buf)->data_len) < 0)
+      socket->curr_win_size = 0;
+    printf("Curr win size: %zu\n", socket->curr_win_size);
+
+    // Ready header
     server.control = htons(ACK);
     server.ack_number = htonl(socket->ack_number);
+    server.window = htons(socket->curr_win_size);
 
     sendto(socket->sd, &server, sizeof(microtcp_header_t), 0, (struct sockaddr *)&address, address_len);
 
