@@ -159,8 +159,18 @@ server_tcp (uint16_t listen_port, const char *file)
 int
 server_microtcp (uint16_t listen_port, const char *file)
 {
+  FILE *fp;
   struct sockaddr_in sin; // Adress
   int received = -1;
+  uint8_t* buffer = (uint8_t*)malloc(3 * CHUNK_SIZE);
+
+  /* Open the file for writing the data from the network */
+  fp = fopen (file, "w");
+  if (!fp) {
+    perror ("Open file for writing");
+    free (buffer);
+    return -EXIT_FAILURE;
+  }
 
   // Create socket
   microtcp_sock_t s = microtcp_socket(AF_INET, SOCK_DGRAM, 0);
@@ -187,7 +197,9 @@ server_microtcp (uint16_t listen_port, const char *file)
   s.address_len = sizeof(struct sockaddr_in); // Keep track of address length
 
   // Wait for FIN
-  while((received = microtcp_recv(&s, (void*)NULL, 1, 0)) != -20){}
+  while((received = microtcp_recv(&s, (void*)buffer, CHUNK_SIZE, 0)) != -20){
+    fwrite (buffer, sizeof(uint8_t), received, fp);
+  }
 
   return 0;
 }
@@ -349,9 +361,9 @@ client_microtcp (const char *serverip, uint16_t server_port, const char *file)
 
   // }
 
-  if(DEBUG) sleep(2); // Possibly sleep before shutdown
+  // if(DEBUG) sleep(); // Possibly sleep before shutdown
  
-  // Shutdown
+  // // Shutdown
   microtcp_shutdown(&s, SHUT_RDWR);
 
   return 0;

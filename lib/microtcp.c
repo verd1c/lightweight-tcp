@@ -342,6 +342,7 @@ microtcp_send (microtcp_sock_t *socket, const void *buffer, size_t length,
   memset(&server, 0, sizeof(microtcp_header_t));
 
   while(data_sent < length){
+    int old_data_sent = data_sent;
     // Get chunk
     to_send = MIN(remaining, MIN(socket->cwnd, 5555));
     // to_send = minPacket(remaining, socket->cwnd, 5555555);
@@ -450,8 +451,9 @@ microtcp_recv (microtcp_sock_t *socket, void *buffer, size_t length, int flags)
   client.window = htons(MICROTCP_WIN_SIZE);
   struct sockaddr_in address = socket->address; // Get saved addr from socket
   socklen_t address_len = socket->address_len;
-  int received = -1, remaining_bytes = length;
-  uint8_t *buf = socket->recvbuf;
+  int received = -1, remaining_bytes = length, received_total = 0;
+  // uint8_t *buf = socket->recvbuf;
+  uint8_t *buf = (uint8_t*)malloc(sizeof(microtcp_header_t) + MICROTCP_MSS);
 
 
   printf("ACK %d\n", socket->ack_number);
@@ -460,6 +462,7 @@ microtcp_recv (microtcp_sock_t *socket, void *buffer, size_t length, int flags)
 
   // Receive a packet
   while(remaining_bytes > 0){
+    memset(buf, 0, sizeof(microtcp_header_t) + MICROTCP_MSS);
     received = recvfrom(socket->sd,
       buf,
       sizeof(microtcp_header_t) + MICROTCP_MSS,  
@@ -470,6 +473,9 @@ microtcp_recv (microtcp_sock_t *socket, void *buffer, size_t length, int flags)
     if(received < 0){
       continue;
     }
+
+    // buf[sizeof(microtcp_header_t) + MICROTCP_MSS - 1] = '\0';
+    printf("%s\n", buf + sizeof(microtcp_header_t));
 
     memset(&server, 0, sizeof(microtcp_header_t));
 
@@ -492,7 +498,7 @@ microtcp_recv (microtcp_sock_t *socket, void *buffer, size_t length, int flags)
       if(microtcp_shutdown(socket,0) == 0){
         socket->state = CLOSED;
         printf("Server closed connection\n");
-        return -20;
+        return received_total;
       }
     }
 
@@ -509,6 +515,12 @@ microtcp_recv (microtcp_sock_t *socket, void *buffer, size_t length, int flags)
       socket->curr_win_size = 0;
     printf("Curr win size: %zu\n", socket->curr_win_size);
 
+    // saaa
+    memcpy(buffer + received_total, buf + sizeof(microtcp_header_t), received - sizeof(microtcp_header_t));
+    received_total += received - sizeof(microtcp_header_t);
+    remaining_bytes -= received;
+    printf("Remaining: %d Received: %d\n", remaining_bytes, received);
+
     // Ready header
     server.control = htons(ACK);
     server.ack_number = htonl(socket->ack_number);
@@ -517,5 +529,7 @@ microtcp_recv (microtcp_sock_t *socket, void *buffer, size_t length, int flags)
     sendto(socket->sd, &server, sizeof(microtcp_header_t), 0, (struct sockaddr *)&address, address_len);
 
   }
-  return 1;
+
+
+  return received_total;
 }
