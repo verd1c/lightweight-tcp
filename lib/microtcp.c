@@ -454,9 +454,10 @@ microtcp_recv (microtcp_sock_t *socket, void *buffer, size_t length, int flags)
   struct sockaddr_in address = socket->address; // Get saved addr from socket
   socklen_t address_len = socket->address_len;
   int received = -1, remaining_bytes = length, received_total = 0;
-  // uint8_t *buf = socket->recvbuf;
+  uint8_t *recvbuf = socket->recvbuf;
   uint8_t *buf = (uint8_t*)malloc(sizeof(microtcp_header_t) + MICROTCP_MSS);
 
+  // If connection is shutdown, exit with -1
   if(socket->state == CLOSED) return -1;
 
   printf("ACK %d\n", socket->ack_number);
@@ -466,6 +467,8 @@ microtcp_recv (microtcp_sock_t *socket, void *buffer, size_t length, int flags)
   // Receive a packet
   while(remaining_bytes > 0){
     memset(buf, 0, sizeof(microtcp_header_t) + MICROTCP_MSS);
+
+    // Receive
     received = recvfrom(socket->sd,
       buf,
       sizeof(microtcp_header_t) + MICROTCP_MSS,  
@@ -477,10 +480,9 @@ microtcp_recv (microtcp_sock_t *socket, void *buffer, size_t length, int flags)
       continue;
     }
 
-    // buf[sizeof(microtcp_header_t) + MICROTCP_MSS - 1] = '\0';
-    //printf("%s\n", buf + sizeof(microtcp_header_t));
-
     memset(&server, 0, sizeof(microtcp_header_t));
+
+    /* ----------- SHUTDOWN CHECK ------------- */
 
     // If client requested shutdown
     if(ntohs(((microtcp_header_t*)buf)->control) == FINACK){
@@ -501,9 +503,16 @@ microtcp_recv (microtcp_sock_t *socket, void *buffer, size_t length, int flags)
       if(microtcp_shutdown(socket,0) == 0){
         socket->state = CLOSED;
         printf("Server closed connection\n");
+
+        // Empty receive buffer
+        memcpy(buffer, recvbuf, socket->buf_fill_level);
+        socket->buf_fill_level = 0;
+
         return received_total;
       }
     }
+
+    /* ----------- CHECKS ------------- */
 
     // Checksum check
 
@@ -512,19 +521,32 @@ microtcp_recv (microtcp_sock_t *socket, void *buffer, size_t length, int flags)
     printf("Seq#: %d Ack#: %d\n", ntohl(((microtcp_header_t*)buf)->seq_number), socket->ack_number);
     if(ntohl(((microtcp_header_t*)buf)->seq_number) == socket->ack_number) socket->ack_number = socket->ack_number + received;
 
+
+    /* ----------- CORRECT PACKET ------------- */
+
     // Decrease win size
     socket->curr_win_size = socket->curr_win_size - ntohl(((microtcp_header_t*)buf)->data_len);
     if((int)(socket->curr_win_size) - (int)ntohl(((microtcp_header_t*)buf)->data_len) < 0)
       socket->curr_win_size = 0;
     printf("Curr win size: %zu\n", socket->curr_win_size);
 
-
-    // saaa
-    memcpy(buffer + received_total, buf + sizeof(microtcp_header_t), received - sizeof(microtcp_header_t));
+    // memcpy(buffer + received_total, buf + sizeof(microtcp_header_t), received - sizeof(microtcp_header_t));
     received_total += received - sizeof(microtcp_header_t);
-    remaining_bytes -= received;
+    remaining_bytes -= received - sizeof(microtcp_header_t);
     printf("Remaining: %d Received: %d\n", remaining_bytes, received);
     //printf("%s\n", buffer);
+
+    // Check if recvbuf needs emptying
+    if(socket->buf_fill_level > 0.85 * MICROTCP_RECVBUF_LEN){
+      
+      // Empty receive buffer
+      memcpy(buffer, recvbuf, socket->buf_fill_level);
+      socket->buf_fill_level = 0;
+    }
+
+    // Sliding window
+    memcpy(recvbuf + socket->buf_fill_level, buf + sizeof(microtcp_header_t), received - sizeof(microtcp_header_t));
+    socket->buf_fill_level += received - sizeof(microtcp_header_t);
 
     // Ready header
     server.control = htons(ACK);
@@ -535,6 +557,9 @@ microtcp_recv (microtcp_sock_t *socket, void *buffer, size_t length, int flags)
 
   }
 
+  // Empty receive buffer
+  memcpy(buffer, recvbuf, socket->buf_fill_level);
+  socket->buf_fill_level = 0;
 
   return received_total;
 }

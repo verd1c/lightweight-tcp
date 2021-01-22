@@ -373,6 +373,7 @@ client_microtcp (const char *serverip, uint16_t server_port, const char *file)
   // }
 
   // if(DEBUG) sleep(); // Possibly sleep before shutdown
+  sleep(2);
  
   // // Shutdown
   microtcp_shutdown(&s, SHUT_RDWR);
