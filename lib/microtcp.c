@@ -442,6 +442,8 @@ microtcp_send (microtcp_sock_t *socket, const void *buffer, size_t length,
 
     }
   }
+
+  return data_sent;
 }
 
 ssize_t
@@ -455,6 +457,7 @@ microtcp_recv (microtcp_sock_t *socket, void *buffer, size_t length, int flags)
   // uint8_t *buf = socket->recvbuf;
   uint8_t *buf = (uint8_t*)malloc(sizeof(microtcp_header_t) + MICROTCP_MSS);
 
+  if(socket->state == CLOSED) return -1;
 
   printf("ACK %d\n", socket->ack_number);
   memset(&client, 0, sizeof(microtcp_header_t));
@@ -475,7 +478,7 @@ microtcp_recv (microtcp_sock_t *socket, void *buffer, size_t length, int flags)
     }
 
     // buf[sizeof(microtcp_header_t) + MICROTCP_MSS - 1] = '\0';
-    printf("%s\n", buf + sizeof(microtcp_header_t));
+    //printf("%s\n", buf + sizeof(microtcp_header_t));
 
     memset(&server, 0, sizeof(microtcp_header_t));
 
@@ -515,11 +518,13 @@ microtcp_recv (microtcp_sock_t *socket, void *buffer, size_t length, int flags)
       socket->curr_win_size = 0;
     printf("Curr win size: %zu\n", socket->curr_win_size);
 
+
     // saaa
     memcpy(buffer + received_total, buf + sizeof(microtcp_header_t), received - sizeof(microtcp_header_t));
     received_total += received - sizeof(microtcp_header_t);
     remaining_bytes -= received;
     printf("Remaining: %d Received: %d\n", remaining_bytes, received);
+    //printf("%s\n", buffer);
 
     // Ready header
     server.control = htons(ACK);
