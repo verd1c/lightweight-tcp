@@ -434,8 +434,6 @@ microtcp_send (microtcp_sock_t *socket, const void *buffer, size_t length,
         continue;
       }
 
-
-
       if(ntohl(server.ack_number) > socket->seq_number){ // Normal
 
         socket->seq_number = ntohl(server.ack_number);
