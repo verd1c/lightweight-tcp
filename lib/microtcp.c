@@ -315,9 +315,12 @@ microtcp_shutdown (microtcp_sock_t *socket, int how)
   socket->state = CLOSED;
 }
 
+/*
+ * Return maximum packet length
+*/
 static inline
 int
-minPacket(int remaining, int cwnd, int win)
+getMaxPacketSize(int remaining, int cwnd, int win)
 {
   if(remaining < cwnd && remaining < win)
     return remaining;
@@ -332,7 +335,7 @@ microtcp_send (microtcp_sock_t *socket, const void *buffer, size_t length,
                int flags)
 {
 
-  int i, rec = 0, remaining = length, data_sent = 0, to_send, chunks = 0, buff_index = 0, bytes_lost;
+  int i, rec = 0, remaining = length, data_sent = 0, to_send, chunks = 0, bytes_lost, last_ack = 0, dup_acks = 0;
   void* buff = malloc(sizeof(microtcp_header_t) + MICROTCP_MSS), *recbuff = malloc(sizeof(microtcp_header_t) + MICROTCP_MSS);
   struct sockaddr_in address = socket->address; // Get saved addr from socket
   socklen_t address_len = socket->address_len;
@@ -345,9 +348,9 @@ microtcp_send (microtcp_sock_t *socket, const void *buffer, size_t length,
   while(data_sent < length){
     int old_data_sent = data_sent;
     // Get chunk
-    to_send = MIN(remaining, MIN(socket->cwnd, socket->curr_win_size));
+
+    to_send = getMaxPacketSize(remaining, socket->cwnd, socket->curr_win_size);
     printf("I picked %d | REMAINING = %d CWND = %d SSTHRESH = %d WINDOWS = %d\n", to_send, remaining, socket->cwnd, socket->ssthresh, socket->curr_win_size);
-    // to_send = minPacket(remaining, socket->cwnd, 5555555);
     //printf("Remaining: %d\n", remaining);
 
     //printf("Sending a segment of %d\n", to_send);
@@ -360,7 +363,7 @@ microtcp_send (microtcp_sock_t *socket, const void *buffer, size_t length,
 
       // Get data length
       ((microtcp_header_t*)buff)->data_len = htonl(MICROTCP_MSS);
-      ((microtcp_header_t*)buff)->seq_number = htonl(socket->seq_number + i * (sizeof(microtcp_header_t) + MICROTCP_MSS));
+      ((microtcp_header_t*)buff)->seq_number = htonl(socket->seq_number + i * MICROTCP_MSS);
 
       //printf("i: %d, buffer = %p\n", i, buffer + i * MICROTCP_MSS);
       memcpy(buff + sizeof(microtcp_header_t), buffer + data_sent, MICROTCP_MSS);
@@ -378,7 +381,6 @@ microtcp_send (microtcp_sock_t *socket, const void *buffer, size_t length,
       );
 
       data_sent += MICROTCP_MSS;
-      buff_index += MICROTCP_MSS;
       remaining = length - data_sent;
     }
 
@@ -391,7 +393,7 @@ microtcp_send (microtcp_sock_t *socket, const void *buffer, size_t length,
       //printf("%s\n", buffer + (chunks - 1) * MICROTCP_MSS);
       ((microtcp_header_t*)buff)->data_len = htonl(to_send % MICROTCP_MSS);
       
-      ((microtcp_header_t*)buff)->seq_number = htonl(socket->seq_number + i * (sizeof(microtcp_header_t) + MICROTCP_MSS));
+      ((microtcp_header_t*)buff)->seq_number = htonl(socket->seq_number + i * MICROTCP_MSS);
 
       memcpy(buff + sizeof(microtcp_header_t), buffer + data_sent, MICROTCP_MSS);
 
@@ -409,7 +411,6 @@ microtcp_send (microtcp_sock_t *socket, const void *buffer, size_t length,
       );
 
       data_sent += to_send % MICROTCP_MSS;
-      buff_index += to_send % MICROTCP_MSS;
     }
 
     // Get ACKS
@@ -422,37 +423,38 @@ microtcp_send (microtcp_sock_t *socket, const void *buffer, size_t length,
         // Timeout
         socket->ssthresh = socket->cwnd / 2;
         socket->cwnd = MICROTCP_MSS;
+
+        // Retransmit
+        bytes_lost = socket->seq_number - ntohl(server.ack_number);
+        printf("RETRANSMITTING %d LOST BYTES\n", bytes_lost);
+        socket->seq_number = ntohl(server.ack_number);
+        socket->curr_win_size = ntohl(server.window);
+        data_sent -= bytes_lost;
       }
 
       // socket->curr_win_size = ntohs(server.window);
       // printf("Server's current window: %d\n", socket->curr_win_size);
 
       // Check if ACK
-      if(ntohs(server.control) != ACK){
-        
-
+      if(ntohs(server.control) != ACK)
         continue;
-      }
 
       if(ntohl(server.ack_number) > socket->seq_number){ // Normal
 
         socket->seq_number = ntohl(server.ack_number);
         socket->curr_win_size = ntohl(server.window);
-      }else if(ntohl(server.ack_number) <= socket->seq_number + sizeof(microtcp_header_t) + MICROTCP_MSS){ // Retransmit
-        printf("RETRANSMITTING\n");
+        last_ack = ntohl(server.ack_number);
+        dup_acks = 0;
+      }else if(dup_acks >= 3){ // Fast Retransmit
+
         bytes_lost = socket->seq_number - ntohl(server.ack_number);
+        printf("RETRANSMITTING %d LOST BYTES\n", bytes_lost);
         socket->seq_number = ntohl(server.ack_number);
         socket->curr_win_size = ntohl(server.window);
+        data_sent -= bytes_lost;
+      }else if(ntohl(server.ack_number) <= socket->seq_number + MICROTCP_MSS && last_ack == ntohl(server.ack_number)){ // Duplicate ACK
+        dup_acks++;
       }
-
-
-      //socket->seq_number = ntohl(server.ack_number);
-
-
-
-
-      //printf("Server's window: %d\n", ntohs(server.window));
-      //socket->curr_win_size = ntohl(server.window);
 
       // Congestion Control
       if(socket->cwnd <= socket->ssthresh){ // Slow Start
@@ -475,8 +477,6 @@ microtcp_send (microtcp_sock_t *socket, const void *buffer, size_t length,
 
         usleep(rand() % MICROTCP_ACK_TIMEOUT_US);
       }
-
-
     }
   }
 
@@ -518,6 +518,8 @@ microtcp_recv (microtcp_sock_t *socket, void *buffer, size_t length, int flags)
     }
 
     memset(&server, 0, sizeof(microtcp_header_t));
+
+    printf("Expected: %d Received: %d\n", socket->ack_number, ntohl(((microtcp_header_t*)buf)->seq_number));
 
     /* ----------- SHUTDOWN CHECK ------------- */
 
@@ -573,7 +575,7 @@ microtcp_recv (microtcp_sock_t *socket, void *buffer, size_t length, int flags)
     }
 
     // ACK -<<>>LP>LPPL{ASCSCACS}
-    if(ntohl(((microtcp_header_t*)buf)->seq_number) == socket->ack_number) socket->ack_number = socket->ack_number + received;
+    if(ntohl(((microtcp_header_t*)buf)->seq_number) == socket->ack_number) socket->ack_number = socket->ack_number + received - sizeof(microtcp_header_t);
 
     /* ----------- CORRECT PACKET ------------- */
 

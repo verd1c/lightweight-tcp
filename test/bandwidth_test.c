@@ -199,10 +199,8 @@ server_microtcp (uint16_t listen_port, const char *file)
   // Wait for FIN
   memset(buffer, '\0', 3 * CHUNK_SIZE);
   while((received = microtcp_recv(&s, (void*)buffer, CHUNK_SIZE, 0)) > 0){
-    printf("Received: %d~\n", strlen(buffer));
 
     // Write to file
-    printf("READING CHUNK ~ UWU \n");
     fwrite(buffer, sizeof(uint8_t), received, fp);
 
     // Reset buffer
@@ -309,11 +307,11 @@ client_microtcp (const char *serverip, uint16_t server_port, const char *file)
 
 
   /* Allocate memory for the application receive buffer */
-  // buffer = (uint8_t *) malloc (CHUNK_SIZE);
-  // if (!buffer) {
-  //   perror ("Allocate application receive buffer");
-  //   return -EXIT_FAILURE;
-  // }
+  buffer = (uint8_t *) malloc (CHUNK_SIZE);
+  if (!buffer) {
+    perror ("Allocate application receive buffer");
+    return -EXIT_FAILURE;
+  }
 
   fp = fopen (file, "r");
   if (!fp) {
@@ -323,19 +321,19 @@ client_microtcp (const char *serverip, uint16_t server_port, const char *file)
   }
 
   // Get size
-  fseek(fp, 0L, SEEK_END);
-  size = ftell(fp);
-  rewind(fp);
-  buffer = (uint8_t*) malloc(size);
-  fread(buffer, sizeof(uint8_t), size, fp);
+  // fseek(fp, 0L, SEEK_END);
+  // size = ftell(fp);
+  // rewind(fp);
+  // buffer = (uint8_t*) malloc(size);
+  // fread(buffer, sizeof(uint8_t), size, fp);
 
   // Create socket
   microtcp_sock_t s = microtcp_socket(AF_INET, SOCK_DGRAM, 0);
 
   memset(&sin, 0, sizeof(struct sockaddr_in)); // Reset buffer
   sin.sin_family = AF_INET; // Set family
-  sin.sin_port = htons(8080); // Set port
-  sin.sin_addr.s_addr = INADDR_ANY; // All addresses
+  sin.sin_port = htons(server_port); // Set port
+  sin.sin_addr.s_addr = inet_addr(serverip); // All addresses
 
   // Keep track in 
   s.address = sin; // Keep track of address
@@ -344,40 +342,38 @@ client_microtcp (const char *serverip, uint16_t server_port, const char *file)
   // Connect
   microtcp_connect(&s, (struct sockaddr *)&sin, sizeof(struct sockaddr_in));
 
-  printf ("Starting sending data...\n");
-  data_sent = microtcp_send (&s, buffer, size * sizeof(uint8_t), 0);
-  printf("Sent: %d\n", data_sent);
+  // printf ("Starting sending data...\n");
+  // data_sent = microtcp_send (&s, buffer, size * sizeof(uint8_t), 0);
+  // printf("Sent: %d\n", data_sent);
 
   /* Start sending the data */
-  // while (!feof (fp)) {
-  //   read_items = fread (buffer, sizeof(uint8_t), CHUNK_SIZE, fp);
-  //   if (read_items < 1) {
-  //     perror ("Failed read from file");
-  //     // shutdown (sock, SHUT_RDWR);
-  //     // close (sock);
-  //     free (buffer);
-  //     fclose (fp);
-  //     return -EXIT_FAILURE;
-  //   }
+  while (!feof (fp)) {
+    read_items = fread (buffer, sizeof(uint8_t), CHUNK_SIZE, fp);
+    if (read_items < 1) {
+      perror ("Failed read from file");
+      // shutdown (sock, SHUT_RDWR);
+      // close (sock);
+      free (buffer);
+      fclose (fp);
+      return -EXIT_FAILURE;
+    }
 
-  //   printf("I AM IN SEND\n");
-  //   data_sent = microtcp_send (&s, buffer, read_items * sizeof(uint8_t), 0);
-  //   if ((long unsigned int)data_sent != read_items * sizeof(uint8_t)) {
-  //     printf ("Failed to send the"
-  //             " amount of data read from the file.\n");
-  //     // shutdown (sock, SHUT_RDWR);
-  //     // close (sock);
-  //     free (buffer);
-  //     fclose (fp);
-  //     return -EXIT_FAILURE;
-  //   }
+    data_sent = microtcp_send (&s, buffer, read_items * sizeof(uint8_t), 0);
+    if ((long unsigned int)data_sent != read_items * sizeof(uint8_t)) {
+      printf ("Failed to send the"
+              " amount of data read from the file.\n");
+      // shutdown (sock, SHUT_RDWR);
+      // close (sock);
+      free (buffer);
+      fclose (fp);
+      return -EXIT_FAILURE;
+    }
 
-  // }
+  }
 
-  // if(DEBUG) sleep(); // Possibly sleep before shutdown
-  sleep(2);
+  if(DEBUG) sleep(1); // Possibly sleep before shutdown
  
-  // // Shutdown
+  // Shutdown
   microtcp_shutdown(&s, SHUT_RDWR);
 
   return 0;
