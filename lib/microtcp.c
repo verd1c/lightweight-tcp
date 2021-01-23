@@ -349,7 +349,7 @@ microtcp_send (microtcp_sock_t *socket, const void *buffer, size_t length,
     int old_data_sent = data_sent;
     // Get chunk
 
-    to_send = getMaxPacketSize(remaining, socket->cwnd, socket->curr_win_size);
+    to_send = getMaxPacketSize(remaining, socket->cwnd, 55555);
     printf("I picked %d | REMAINING = %d CWND = %d SSTHRESH = %d WINDOWS = %d\n", to_send, remaining, socket->cwnd, socket->ssthresh, socket->curr_win_size);
     //printf("Remaining: %d\n", remaining);
 
