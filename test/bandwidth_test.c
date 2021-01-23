@@ -199,10 +199,11 @@ server_microtcp (uint16_t listen_port, const char *file)
   // Wait for FIN
   memset(buffer, '\0', 3 * CHUNK_SIZE);
   while((received = microtcp_recv(&s, (void*)buffer, CHUNK_SIZE, 0)) > 0){
+    printf("Received: %d~\n", strlen(buffer));
 
     // Write to file
     printf("READING CHUNK ~ UWU \n");
-    fwrite(buffer, sizeof(uint8_t), strlen(buffer), fp);
+    fwrite(buffer, sizeof(uint8_t), received, fp);
 
     // Reset buffer
     memset(buffer, '\0', 3 * CHUNK_SIZE);
@@ -346,6 +347,7 @@ client_microtcp (const char *serverip, uint16_t server_port, const char *file)
   printf ("Starting sending data...\n");
   data_sent = microtcp_send (&s, buffer, size * sizeof(uint8_t), 0);
   printf("Sent: %d\n", data_sent);
+
   /* Start sending the data */
   // while (!feof (fp)) {
   //   read_items = fread (buffer, sizeof(uint8_t), CHUNK_SIZE, fp);

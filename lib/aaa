@@ -1,0 +1,16 @@
+slow start:
+cwnd <= ssthreshold
+cwnd += MSS
+
+congestion avoidance:
+cwnd > ssthreshold
+cwnd += 1
+
+fast retransmit:
+3 DUP ACK:
+ssthreshold = cwnd / 2;
+cwnd = ssthreshold
+
+timeout:
+ssthreshold = cwnd / 2;
+cwnd = MSS;
