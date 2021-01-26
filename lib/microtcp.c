@@ -154,6 +154,7 @@ microtcp_connect (microtcp_sock_t *socket, const struct sockaddr *address,
   socket->packets_send++;
   socket->bytes_send += sizeof(microtcp_header_t);
 
+  // Set state
   socket->state = ESTABLISHED;
   if(DEBUG) printf("CLIENT - INIT_WIN = %d CURR_WIN = %d\n", socket->init_win_size, socket->curr_win_size);
 }
@@ -167,6 +168,7 @@ microtcp_accept (microtcp_sock_t *socket, struct sockaddr *address,
   client.data_len = htonl(32);
   int received = -1;
 
+  // Init server's socket
   socket->type = SERVER;
   socket->init_win_size = MICROTCP_WIN_SIZE;
   socket->curr_win_size = MICROTCP_WIN_SIZE;
@@ -355,7 +357,7 @@ microtcp_send (microtcp_sock_t *socket, const void *buffer, size_t length,
   socklen_t address_len = socket->address_len;
   microtcp_header_t client, server;
 
-  //printf("sent: %d, length: %d\n", data_sent, length);
+  if(DEBUG) printf("sent: %d, length: %d\n", data_sent, length);
   memset(&client, 0, sizeof(microtcp_header_t));
   memset(&server, 0, sizeof(microtcp_header_t));
 
@@ -365,25 +367,23 @@ microtcp_send (microtcp_sock_t *socket, const void *buffer, size_t length,
     to_send = getMaxPacketSize(remaining, socket->cwnd, 55555);
     if(DEBUG) printf("I picked %d | REMAINING = %d CWND = %d SSTHRESH = %d WINDOWS = %d\n", to_send, remaining, socket->cwnd, socket->ssthresh, socket->curr_win_size);
     //printf("Remaining: %d\n", remaining);
-
     //printf("Sending a segment of %d\n", to_send);
 
     chunks = to_send / MICROTCP_MSS;
     for(i = 0; i < chunks; i++){
-      //printf("Sending chunk of 1400 number %d\n", i);
-
       memset(buff, 0, sizeof(microtcp_header_t) + MICROTCP_MSS);
+      if(DEBUG) printf("Sending chunk of 1400 number %d\n", i);
 
-      // Get data length
+      // Get data length and seq num
       ((microtcp_header_t*)buff)->data_len = htonl(MICROTCP_MSS);
       ((microtcp_header_t*)buff)->seq_number = htonl(socket->seq_number + i * MICROTCP_MSS);
 
-      //printf("i: %d, buffer = %p\n", i, buffer + i * MICROTCP_MSS);
+      // Put current buffer part in packet
       memcpy(buff + sizeof(microtcp_header_t), buffer + data_sent, MICROTCP_MSS);
 
       // Checksum
       ((microtcp_header_t*)buff)->checksum = htonl(crc32(buff, sizeof(microtcp_header_t) + MICROTCP_MSS));
-      //printf("Checksum %lu\n", ntohl(((microtcp_header_t*)buff)->checksum));
+      if(DEBUG) printf("Checksum %lu\n", ntohl(((microtcp_header_t*)buff)->checksum));
 
       sendto(socket->sd,
             buff,
@@ -397,23 +397,23 @@ microtcp_send (microtcp_sock_t *socket, const void *buffer, size_t length,
       remaining = length - data_sent;
     }
 
+    // If there is any remaining thats not 1400B
     if(to_send % MICROTCP_MSS != 0){
-      //printf("Sending remaining %d bytes\n", to_send % MICROTCP_MSS);
       chunks++;
-
       memset(buff, 0, sizeof(microtcp_header_t) + MICROTCP_MSS);
+      if(DEBUG) printf("Sending remaining %d bytes\n", to_send % MICROTCP_MSS);
 
-      //printf("%s\n", buffer + (chunks - 1) * MICROTCP_MSS);
+      // Get data length and seq num
       ((microtcp_header_t*)buff)->data_len = htonl(to_send % MICROTCP_MSS);
       ((microtcp_header_t*)buff)->seq_number = htonl(socket->seq_number + i * MICROTCP_MSS);
 
+      // Put current buffer part in packet
       memcpy(buff + sizeof(microtcp_header_t), buffer + data_sent, MICROTCP_MSS);
 
       // Checksum
       ((microtcp_header_t*)buff)->checksum = htonl(crc32(buff, sizeof(microtcp_header_t) + to_send % MICROTCP_MSS));
-      //printf("Checksum %lu\n", ntohl(((microtcp_header_t*)buff)->checksum));
+      if(DEBUG) printf("Checksum %lu\n", ntohl(((microtcp_header_t*)buff)->checksum));
       
-      //printf("%s\n", buff + sizeof(microtcp_header_t));
       sendto(socket->sd,
             buff,
             sizeof(microtcp_header_t) + ntohl(((microtcp_header_t*)buff)->data_len),
@@ -427,7 +427,6 @@ microtcp_send (microtcp_sock_t *socket, const void *buffer, size_t length,
 
     // Get ACKS
     for(int i = 0; i < chunks; i++){
-      //printf("Receiving\n");
       // Receive
       rec = recvfrom(socket->sd, &server, sizeof(microtcp_header_t), 0, &(socket->address), &(socket->address_len));
       if(rec < 0){
@@ -444,21 +443,19 @@ microtcp_send (microtcp_sock_t *socket, const void *buffer, size_t length,
         data_sent -= bytes_lost;
       }
 
-      // socket->curr_win_size = ntohs(server.window);
-      // printf("Server's current window: %d\n", socket->curr_win_size);
 
       // Check if ACK
       if(ntohs(server.control) != ACK)
         continue;
 
       if(ntohl(server.ack_number) > socket->seq_number){ // Normal
-
+        // Advance seq nums
         socket->seq_number = ntohl(server.ack_number);
         socket->curr_win_size = ntohl(server.window);
         last_ack = ntohl(server.ack_number);
         dup_acks = 0;
       }else if(dup_acks >= 3){ // Fast Retransmit
-
+        // GO-BACK-N
         bytes_lost = socket->seq_number - ntohl(server.ack_number);
         if(DEBUG) printf("RETRANSMITTING %d LOST BYTES\n", bytes_lost);
         socket->seq_number = ntohl(server.ack_number);
@@ -477,6 +474,7 @@ microtcp_send (microtcp_sock_t *socket, const void *buffer, size_t length,
 
       // Flow Control
       if(socket->curr_win_size == 0){
+        // If window is 0, we will send empty packets till its normal again
         
         // Send 0 data packet
         sendto(socket->sd,

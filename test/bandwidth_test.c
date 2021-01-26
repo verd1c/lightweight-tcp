@@ -213,7 +213,7 @@ server_microtcp (uint16_t listen_port, const char *file)
   clock_gettime (CLOCK_MONOTONIC_RAW, &end_time);
   print_statistics (s.bytes_received, start_time, end_time);
 
-  // CLOSE FILE XD 7 HOUR BUG
+  // :)
   fclose(fp);
 
   return 0;
@@ -358,8 +358,6 @@ client_microtcp (const char *serverip, uint16_t server_port, const char *file)
     read_items = fread (buffer, sizeof(uint8_t), CHUNK_SIZE, fp);
     if (read_items < 1) {
       perror ("Failed read from file");
-      // shutdown (sock, SHUT_RDWR);
-      // close (sock);
       free (buffer);
       fclose (fp);
       return -EXIT_FAILURE;
@@ -369,8 +367,6 @@ client_microtcp (const char *serverip, uint16_t server_port, const char *file)
     if ((long unsigned int)data_sent != read_items * sizeof(uint8_t)) {
       printf ("Failed to send the"
               " amount of data read from the file.\n");
-      // shutdown (sock, SHUT_RDWR);
-      // close (sock);
       free (buffer);
       fclose (fp);
       return -EXIT_FAILURE;
