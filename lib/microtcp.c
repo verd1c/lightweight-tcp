@@ -492,6 +492,8 @@ microtcp_send (microtcp_sock_t *socket, const void *buffer, size_t length,
     }
   }
 
+  free(buff);
+  free(recbuff);
   return data_sent;
 }
 
@@ -626,7 +628,7 @@ microtcp_recv (microtcp_sock_t *socket, void *buffer, size_t length, int flags)
     sendto(socket->sd, &server, sizeof(microtcp_header_t), 0, (struct sockaddr *)&address, address_len);
     socket->packets_send++;
     socket->bytes_send += sizeof(microtcp_header_t);
-    printf("%d\n", buffer_index);
+    if(DEBUG) printf("%d\n", buffer_index);
   }
 
   // Empty receive buffer
@@ -635,5 +637,6 @@ microtcp_recv (microtcp_sock_t *socket, void *buffer, size_t length, int flags)
   socket->buf_fill_level = 0;
   socket->curr_win_size = socket->init_win_size;
 
+  free(buf);
   return received_total;
 }
