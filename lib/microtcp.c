@@ -502,7 +502,7 @@ microtcp_recv (microtcp_sock_t *socket, void *buffer, size_t length, int flags)
   client.window = htons(MICROTCP_WIN_SIZE);
   struct sockaddr_in address = socket->address; // Get saved addr from socket
   socklen_t address_len = socket->address_len;
-  int received = -1, remaining_bytes = length, received_total = 0, checksum;
+  int received = -1, remaining_bytes = length, received_total = 0, checksum, buffer_index = 0;
   uint8_t *recvbuf = socket->recvbuf;
   uint8_t *buf = (uint8_t*)malloc(sizeof(microtcp_header_t) + MICROTCP_MSS);
 
@@ -608,13 +608,14 @@ microtcp_recv (microtcp_sock_t *socket, void *buffer, size_t length, int flags)
     if(socket->buf_fill_level > 0.85 * MICROTCP_RECVBUF_LEN){
       
       // Empty receive buffer
-      memcpy(buffer, recvbuf, socket->buf_fill_level);
+      memcpy(buffer + buffer_index, recvbuf, socket->buf_fill_level);
+      buffer_index += socket->buf_fill_level;
       socket->buf_fill_level = 0;
       socket->curr_win_size = socket->init_win_size;
     }
 
     // Sliding window
-    memcpy(recvbuf + socket->buf_fill_level, buf + sizeof(microtcp_header_t), received - sizeof(microtcp_header_t));
+    memcpy(recvbuf + buffer_index + socket->buf_fill_level, buf + sizeof(microtcp_header_t), received - sizeof(microtcp_header_t));
     socket->buf_fill_level += received - sizeof(microtcp_header_t);
 
     // Ready header
@@ -625,10 +626,12 @@ microtcp_recv (microtcp_sock_t *socket, void *buffer, size_t length, int flags)
     sendto(socket->sd, &server, sizeof(microtcp_header_t), 0, (struct sockaddr *)&address, address_len);
     socket->packets_send++;
     socket->bytes_send += sizeof(microtcp_header_t);
+    printf("%d\n", buffer_index);
   }
 
   // Empty receive buffer
-  memcpy(buffer, recvbuf, socket->buf_fill_level);
+  memcpy(buffer + buffer_index, recvbuf, socket->buf_fill_level);
+  buffer_index += socket->buf_fill_level;
   socket->buf_fill_level = 0;
   socket->curr_win_size = socket->init_win_size;
 
