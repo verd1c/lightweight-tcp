@@ -36,7 +36,15 @@ microtcp_socket (int domain, int type, int protocol)
     printf("socket error");
     exit(EXIT_FAILURE);
   }
-  s.sd = sock_desc; // Set socket
+
+  // Initialize socket values
+  s.sd = sock_desc;
+  s.packets_lost = 0;
+  s.packets_received = 0;
+  s.packets_send = 0;
+  s.bytes_lost = 0;
+  s.bytes_received = 0;
+  s.bytes_send = 0;
 
   // Set timeout
   struct timeval timeout;
@@ -94,6 +102,8 @@ microtcp_connect (microtcp_sock_t *socket, const struct sockaddr *address,
     address,
     address_len
   );
+  socket->packets_send++;
+  socket->bytes_send += sizeof(microtcp_header_t);
 
   // Server SYN ACK
   while(received < 0){
@@ -107,14 +117,15 @@ microtcp_connect (microtcp_sock_t *socket, const struct sockaddr *address,
   }
 
   // If server successfully received first sequence number
-  if(ntohl(server.ack_number) == ntohl(client.seq_number) + received){
+  if(ntohl(server.ack_number) == ntohl(client.seq_number) + 1){
 
     // If server sent SYN ACK
     if(ntohs(server.control) == SYNACK){
 
       //printf("Server received SYN and I received SYNACK\n");
       socket->seq_number = ntohl(server.ack_number);
-      socket->ack_number = ntohl(server.seq_number) + received;
+      //socket->ack_number = ntohl(server.seq_number) + received;
+      socket->ack_number = ntohl(server.seq_number) + 1;
       socket->init_win_size = ntohs(server.window);
       socket->curr_win_size = ntohs(server.window);
 
@@ -140,9 +151,11 @@ microtcp_connect (microtcp_sock_t *socket, const struct sockaddr *address,
     address,  
     address_len
   );
+  socket->packets_send++;
+  socket->bytes_send += sizeof(microtcp_header_t);
 
   socket->state = ESTABLISHED;
-  printf("CLIENT - INIT_WIN = %d CURR_WIN = %d\n", socket->init_win_size, socket->curr_win_size);
+  if(DEBUG) printf("CLIENT - INIT_WIN = %d CURR_WIN = %d\n", socket->init_win_size, socket->curr_win_size);
 }
 
 int
@@ -182,10 +195,11 @@ microtcp_accept (microtcp_sock_t *socket, struct sockaddr *address,
   }
 
   // Init Recv Win
-  printf("%d\n", socket->curr_win_size);
+  if(DEBUG) printf("%d\n", socket->curr_win_size);
   server.window = htons(socket->curr_win_size);
   //server.ack_number = htonl(ntohl(client.seq_number) + 1);
-  socket->ack_number = ntohl(client.seq_number) + received;
+  socket->ack_number = ntohl(client.seq_number) + 1;
+  //socket->ack_number = ntohl(client.seq_number) + received;
   socket->seq_number = rand();
   server.seq_number = htonl(socket->seq_number);
   server.ack_number = htonl(socket->ack_number);
@@ -213,18 +227,18 @@ microtcp_accept (microtcp_sock_t *socket, struct sockaddr *address,
   }
 
   // Check if packet was ACK and acknowledge num
-  if(ntohl(client.ack_number) == ntohl(server.seq_number) + received){
+  if(ntohl(client.ack_number) == ntohl(server.seq_number) + 1){
     if(ntohs(client.control) == ACK){
-      printf("Handshake complete.\n"); // Will be gone in 2nd phase
+      if(DEBUG) printf("Handshake complete.\n"); // Will be gone in 2nd phase
       socket->seq_number = ntohl(client.ack_number);
       socket->state = ESTABLISHED;
     }else{
       socket->state = INVALID;
-      printf("Handshake failed.\n");
+      if(DEBUG) printf("Handshake failed.\n");
     }
   }else{
     socket->state = INVALID;
-    printf("Handshake faile.\n");
+    if(DEBUG) printf("Handshake faile.\n");
   }
 }
 
@@ -293,7 +307,7 @@ microtcp_shutdown (microtcp_sock_t *socket, int how)
 
   // Check if packet was FINACK 
   if(ntohs(server.control) == FINACK){
-    printf("I requested a connection shutdown\n");
+    if(DEBUG) printf("I requested a connection shutdown\n");
   }else{
     perror("shutdown failed 2");
     return 1;
@@ -311,7 +325,7 @@ microtcp_shutdown (microtcp_sock_t *socket, int how)
     address_len
   );
 
-  printf("Connection shutdown\n");
+  if(DEBUG) printf("Connection shutdown\n");
   socket->state = CLOSED;
 }
 
@@ -346,11 +360,10 @@ microtcp_send (microtcp_sock_t *socket, const void *buffer, size_t length,
   memset(&server, 0, sizeof(microtcp_header_t));
 
   while(data_sent < length){
-    int old_data_sent = data_sent;
-    // Get chunk
 
+    // Get chunk size
     to_send = getMaxPacketSize(remaining, socket->cwnd, 55555);
-    printf("I picked %d | REMAINING = %d CWND = %d SSTHRESH = %d WINDOWS = %d\n", to_send, remaining, socket->cwnd, socket->ssthresh, socket->curr_win_size);
+    if(DEBUG) printf("I picked %d | REMAINING = %d CWND = %d SSTHRESH = %d WINDOWS = %d\n", to_send, remaining, socket->cwnd, socket->ssthresh, socket->curr_win_size);
     //printf("Remaining: %d\n", remaining);
 
     //printf("Sending a segment of %d\n", to_send);
@@ -392,7 +405,6 @@ microtcp_send (microtcp_sock_t *socket, const void *buffer, size_t length,
 
       //printf("%s\n", buffer + (chunks - 1) * MICROTCP_MSS);
       ((microtcp_header_t*)buff)->data_len = htonl(to_send % MICROTCP_MSS);
-      
       ((microtcp_header_t*)buff)->seq_number = htonl(socket->seq_number + i * MICROTCP_MSS);
 
       memcpy(buff + sizeof(microtcp_header_t), buffer + data_sent, MICROTCP_MSS);
@@ -426,7 +438,7 @@ microtcp_send (microtcp_sock_t *socket, const void *buffer, size_t length,
 
         // Retransmit
         bytes_lost = socket->seq_number - ntohl(server.ack_number);
-        printf("RETRANSMITTING %d LOST BYTES\n", bytes_lost);
+        if(DEBUG) printf("RETRANSMITTING %d LOST BYTES\n", bytes_lost);
         socket->seq_number = ntohl(server.ack_number);
         socket->curr_win_size = ntohl(server.window);
         data_sent -= bytes_lost;
@@ -448,7 +460,7 @@ microtcp_send (microtcp_sock_t *socket, const void *buffer, size_t length,
       }else if(dup_acks >= 3){ // Fast Retransmit
 
         bytes_lost = socket->seq_number - ntohl(server.ack_number);
-        printf("RETRANSMITTING %d LOST BYTES\n", bytes_lost);
+        if(DEBUG) printf("RETRANSMITTING %d LOST BYTES\n", bytes_lost);
         socket->seq_number = ntohl(server.ack_number);
         socket->curr_win_size = ntohl(server.window);
         data_sent -= bytes_lost;
@@ -497,7 +509,7 @@ microtcp_recv (microtcp_sock_t *socket, void *buffer, size_t length, int flags)
   // If connection is shutdown, exit with -1
   if(socket->state == CLOSED) return -1;
 
-  printf("ACK %d\n", socket->ack_number);
+  if(DEBUG) printf("ACK %d\n", socket->ack_number);
   memset(&client, 0, sizeof(microtcp_header_t));
   memset(&server, 0, sizeof(microtcp_header_t));
 
@@ -519,13 +531,13 @@ microtcp_recv (microtcp_sock_t *socket, void *buffer, size_t length, int flags)
 
     memset(&server, 0, sizeof(microtcp_header_t));
 
-    printf("Expected: %d Received: %d\n", socket->ack_number, ntohl(((microtcp_header_t*)buf)->seq_number));
+    if(DEBUG) printf("Expected: %d Received: %d\n", socket->ack_number, ntohl(((microtcp_header_t*)buf)->seq_number));
 
     /* ----------- SHUTDOWN CHECK ------------- */
 
     // If client requested shutdown
     if(ntohs(((microtcp_header_t*)buf)->control) == FINACK){
-      printf("Was finack %d %d\n", ntohs(((microtcp_header_t*)buf)->control), FINACK);
+      if(DEBUG) printf("Was finack %d %d\n", ntohs(((microtcp_header_t*)buf)->control), FINACK);
       // Acknowledge the FIN with an ACk
       server.ack_number = htonl(ntohl(((microtcp_header_t*)buf)->seq_number) + 1);
       server.control = htons(ACK);
@@ -541,7 +553,7 @@ microtcp_recv (microtcp_sock_t *socket, void *buffer, size_t length, int flags)
       // Shutdown from server
       if(microtcp_shutdown(socket,0) == 0){
         socket->state = CLOSED;
-        printf("Server closed connection\n");
+        if(DEBUG) printf("Server closed connection\n");
 
         // Empty receive buffer
         memcpy(buffer, recvbuf, socket->buf_fill_level);
@@ -553,13 +565,11 @@ microtcp_recv (microtcp_sock_t *socket, void *buffer, size_t length, int flags)
     }
 
     /* ----------- CHECKS ------------- */
+    if(DEBUG) printf("Received :%d\n", received);
 
-    // Checksum check NEEDS FIX
-    printf("Received :%d\n", received);
     checksum = ntohl(((microtcp_header_t*)buf)->checksum);
     ((microtcp_header_t*)buf)->checksum = 0;
-
-    if(checksum != crc32(buf, received)){
+    if(checksum != crc32(buf, received) || ntohl(((microtcp_header_t*)buf)->seq_number) != socket->ack_number){
       
       // Send duplicate ACK
       memset(&server, 0, sizeof(microtcp_header_t));
@@ -575,9 +585,12 @@ microtcp_recv (microtcp_sock_t *socket, void *buffer, size_t length, int flags)
     }
 
     // ACK -<<>>LP>LPPL{ASCSCACS}
-    if(ntohl(((microtcp_header_t*)buf)->seq_number) == socket->ack_number) socket->ack_number = socket->ack_number + received - sizeof(microtcp_header_t);
+    //if(ntohl(((microtcp_header_t*)buf)->seq_number) == socket->ack_number) socket->ack_number = socket->ack_number + received - sizeof(microtcp_header_t);
 
     /* ----------- CORRECT PACKET ------------- */
+    socket->ack_number = socket->ack_number + received - sizeof(microtcp_header_t); // <--
+    socket->bytes_received += received;
+    socket->packets_received++;
 
     // Decrease win size
     socket->curr_win_size = socket->curr_win_size - received - sizeof(microtcp_header_t);
@@ -610,7 +623,8 @@ microtcp_recv (microtcp_sock_t *socket, void *buffer, size_t length, int flags)
     server.window = htons(socket->curr_win_size);
 
     sendto(socket->sd, &server, sizeof(microtcp_header_t), 0, (struct sockaddr *)&address, address_len);
-
+    socket->packets_send++;
+    socket->bytes_send += sizeof(microtcp_header_t);
   }
 
   // Empty receive buffer

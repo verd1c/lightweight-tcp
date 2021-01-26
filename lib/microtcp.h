@@ -42,7 +42,7 @@
 /*
  * Boolean
  */
-#define DEBUG 1
+#define DEBUG 0
 #define TRUE 1
 #define FALSE 0
 

@@ -143,11 +143,11 @@ server_tcp (uint16_t listen_port, const char *file)
       return -EXIT_FAILURE;
     }
   }
-  clock_gettime (CLOCK_MONOTONIC_RAW, &end_time);
-  print_statistics (total_bytes, start_time, end_time);
 
   shutdown (accepted, SHUT_RDWR);
   shutdown (sock, SHUT_RDWR);
+  clock_gettime (CLOCK_MONOTONIC_RAW, &end_time);
+  print_statistics (total_bytes, start_time, end_time);
   close (accepted);
   close (sock);
   fclose (fp);
@@ -163,6 +163,9 @@ server_microtcp (uint16_t listen_port, const char *file)
   struct sockaddr_in sin; // Adress
   int received = -1;
   uint8_t* buffer = (uint8_t*)malloc(3 * CHUNK_SIZE);
+
+  struct timespec start_time;
+  struct timespec end_time;
 
   /* Open the file for writing the data from the network */
   fp = fopen (file, "w");
@@ -196,7 +199,8 @@ server_microtcp (uint16_t listen_port, const char *file)
   s.address = sin; // Keep track of address
   s.address_len = sizeof(struct sockaddr_in); // Keep track of address length
 
-  // Wait for FIN
+  // Receive
+  clock_gettime (CLOCK_MONOTONIC_RAW, &start_time);
   memset(buffer, '\0', 3 * CHUNK_SIZE);
   while((received = microtcp_recv(&s, (void*)buffer, CHUNK_SIZE, 0)) > 0){
 
@@ -206,6 +210,8 @@ server_microtcp (uint16_t listen_port, const char *file)
     // Reset buffer
     memset(buffer, '\0', 3 * CHUNK_SIZE);
   }
+  clock_gettime (CLOCK_MONOTONIC_RAW, &end_time);
+  print_statistics (s.bytes_received, start_time, end_time);
 
   // CLOSE FILE XD 7 HOUR BUG
   fclose(fp);
@@ -347,6 +353,7 @@ client_microtcp (const char *serverip, uint16_t server_port, const char *file)
   // printf("Sent: %d\n", data_sent);
 
   /* Start sending the data */
+  printf ("Starting sending data...\n");
   while (!feof (fp)) {
     read_items = fread (buffer, sizeof(uint8_t), CHUNK_SIZE, fp);
     if (read_items < 1) {
@@ -374,6 +381,7 @@ client_microtcp (const char *serverip, uint16_t server_port, const char *file)
   if(DEBUG) sleep(1); // Possibly sleep before shutdown
  
   // Shutdown
+  printf ("Data sent. Terminating...\n");
   microtcp_shutdown(&s, SHUT_RDWR);
 
   return 0;
